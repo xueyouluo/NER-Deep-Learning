@@ -15,8 +15,8 @@ class Config(object):
     embedding_size = 100
 
     # segement embedding, works only size > 0
-    segement_embedding_size = 10
-    segment_onehot = True
+    segement_embedding_size = 20
+    segment_onehot = False
     segment_tag_num = 4
     segment_vocab_file = None
 

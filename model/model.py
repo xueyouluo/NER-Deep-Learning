@@ -123,10 +123,39 @@ class NERModel(object):
 
     def setup_crf(self):
         with tf.variable_scope("CRF"):
-            log_likelihood, trans_params = tf.contrib.crf.crf_log_likelihood(self.pred,self.target_tokens,self.source_length)
+            # 
+            # According to [Neural architectures for named entity recognition](https://arxiv.org/pdf/1603.01360.pdf)
+            # we add y_0 and y_n as start and end point
+            # 
+            small = -1000.0
+            # start logits: batch_size * 1 * (num_tags + 2)
+            # end logits: batch_size * 1 * (num_tags + 2)
+            start_logits = tf.concat(
+                [small * tf.ones(shape=[self.batch_size, 1, self.config.num_tags]), tf.zeros(shape=[self.batch_size, 1, 1]), small * tf.ones(shape=[self.batch_size,1,1])], axis=-1)
+            end_logits = tf.concat(
+                [small * tf.ones(shape=[self.batch_size, 1, self.config.num_tags]), small * tf.ones(shape=[self.batch_size,1,1]), tf.zeros(shape=[self.batch_size, 1, 1])], axis=-1
+            )
+
+            num_steps = tf.shape(self.source_tokens)[-1]
+
+            # pad logits to batch_size * num_steps * (num_tags + 2)
+            pad_logits = tf.cast(small * tf.ones([self.batch_size, num_steps, 2]), tf.float32)
+            logits = tf.concat([self.pred, pad_logits], axis=-1)
+            
+            # pad logits to batch_size * (num_steps + 2) * (num_tags + 2)
+            self.logits = tf.concat([start_logits, logits, end_logits], axis=1)
+
+            # pad targets to batch_size * (num_steps + 2)
+            # start + targets + end
+            self.targets = tf.concat(
+                [tf.cast(self.config.num_tags*tf.ones([self.batch_size, 1]), tf.int32), self.target_tokens, tf.cast((self.config.num_tags+1)*tf.ones([self.batch_size, 1]), tf.int32)], axis=-1)
+
+
+            log_likelihood, trans_params = tf.contrib.crf.crf_log_likelihood(self.logits, self.targets, self.source_length + 2)
             self.transition_params = trans_params
             self.losses = tf.reduce_mean(-log_likelihood)
-            self.viterbi_sequence, self.viterbi_score = tf.contrib.crf.crf_decode(self.pred, self.transition_params, self.source_length)
+            viterbi_sequence, self.viterbi_score = tf.contrib.crf.crf_decode(self.logits, self.transition_params, self.source_length + 2)
+            self.viterbi_sequence = viterbi_sequence[:,1:-1]
 
 
     def train_one_batch(self,source_tokens,source_length,segment_tokens,target_tokens):
@@ -149,7 +178,7 @@ class NERModel(object):
         feed_dict[self.source_length] = source_length
         feed_dict[self.segment_tokens] = segment_tokens
 
-        tf_unary_scores, tf_transition_params = sess.run([self.pred, self.transition_params],feed_dict=feed_dict)
+        tf_unary_scores, tf_transition_params = sess.run([self.logits, self.transition_params],feed_dict=feed_dict)
         decode_sequnces, decode_score = [],[]
         for tf_unary_scores_, tf_sequence_length_  in zip(tf_unary_scores, source_length):
             # Remove padding.
@@ -157,7 +186,7 @@ class NERModel(object):
             # Compute the highest score and its tag sequence.
             tf_viterbi_sequence, tf_viterbi_score = tf.contrib.crf.viterbi_decode(
                 tf_unary_scores_, tf_transition_params)
-            decode_sequnces.append(tf_viterbi_sequence)
+            decode_sequnces.append(tf_viterbi_sequence[1:-1])
             decode_score.append(tf_viterbi_score)
         return decode_sequnces, decode_score
 

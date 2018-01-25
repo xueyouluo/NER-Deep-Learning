@@ -13,7 +13,10 @@ from utils.train_utils import get_config_proto
 
 if __name__ == "__main__":
     DATA_DIR = "./data"
-    checkpoint_dir = '/tmp/ner/'
+    checkpoint_dir = '/tmp/ner_test/'
+
+    if not os.path.exists(checkpoint_dir):
+        os.mkdir(checkpoint_dir)
 
     # read training data
     train_data = read_data(os.path.join(DATA_DIR,"example.train"))
@@ -60,7 +63,7 @@ if __name__ == "__main__":
         config.tag_vocab_file = os.path.join(checkpoint_dir,"tag.vocab")
         pickle.dump(config, open(os.path.join(config.checkpoint_dir,"config.pkl"),'wb'))
 
-    with tf.Session(config=get_config_proto()) as sess:
+    with tf.Session(config=get_config_proto(log_device_placement=False)) as sess:
         model = NERModel(sess, config)
         model.build()
         model.init()
@@ -69,14 +72,16 @@ if __name__ == "__main__":
             model.restore_model()
             print("restored model from checkpoint dir")
         except:
+            print("create with fresh parameters")
             pass
         batch_manager = Batch(train_data,32)
         checkpoint_loss = 0.0
         step_time = 0.0
-        stats_per_step = 100
-        stats_per_eval = 500
-        best_dev_f1 = -100
-        best_test_f1 = -100
+        stats_per_step = 50
+        stats_per_eval = 1000
+        
+        best_dev_f1 = config.best_dev_f1
+        best_test_f1 = config.best_test_f1
 
         for i in range(30):
             for batch in batch_manager.next_batch():
@@ -90,22 +95,32 @@ if __name__ == "__main__":
                     checkpoint_loss = 0.0
                     step_time = 0.0
 
-            if global_step % stats_per_eval:
-                dev_f1 = evaluate(model,"dev",dev_data,word_vocab,tag_vocab)
-                test_f1 = evaluate(model,'test',test_data,word_vocab,tag_vocab)
+                if global_step % stats_per_eval == 0:
+                    words, length, segments, target = batch[0]
 
-                if dev_f1 > best_dev_f1:
-                    best_dev_f1 = dev_f1
-                    config.best_dev_f1 = best_dev_f1
-                    print("New best dev f1 - {0}".format(best_dev_f1))
-                    model.save_model(config.checkpoint_dir + "/best_dev")
-                    pickle.dump(config, open(os.path.join(config.checkpoint_dir,"config.pkl"),'wb'))
+                    decode,_ = model.inference([words],[length],[segments])
+                    print("Sentence:")
+                    print(" ".join(word_vocab[w] for w in words[:length]))
+                    print("Gold:")
+                    print(" ".join([tag_vocab[t] for t in target[:length]]))
+                    print("Predict:")
+                    print(" ".join([tag_vocab[p] for p in decode[0][:length]]))
 
-                if test_f1 > best_test_f1:
-                    best_test_f1 = test_f1
-                    config.best_test_f1 = best_test_f1
-                    print("New best test f1 - {0}".format(best_test_f1))
-                    model.save_model(config.checkpoint_dir + "/best_test")
-                    pickle.dump(config, open(os.path.join(config.checkpoint_dir,"config.pkl"),'wb'))
+                    dev_f1 = evaluate(model,"dev",dev_data,word_vocab,tag_vocab)
+                    test_f1 = evaluate(model,'test',test_data,word_vocab,tag_vocab)
+
+                    if dev_f1 > best_dev_f1:
+                        best_dev_f1 = dev_f1
+                        config.best_dev_f1 = best_dev_f1
+                        print("New best dev f1 - {0}".format(best_dev_f1))
+                        model.save_model(config.checkpoint_dir + "/best_dev")
+                        pickle.dump(config, open(os.path.join(config.checkpoint_dir,"config.pkl"),'wb'))
+
+                    if test_f1 > best_test_f1:
+                        best_test_f1 = test_f1
+                        config.best_test_f1 = best_test_f1
+                        print("New best test f1 - {0}".format(best_test_f1))
+                        model.save_model(config.checkpoint_dir + "/best_test")
+                        pickle.dump(config, open(os.path.join(config.checkpoint_dir,"config.pkl"),'wb'))
 
             model.save_model()

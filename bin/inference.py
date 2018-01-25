@@ -12,9 +12,9 @@ if __name__ == "__main__":
     checkpoint_dir = "/tmp/ner/"
     config = pickle.load(open(checkpoint_dir + "config.pkl",'rb'))
     config.mode = "inference"
-    word2id, id2word = read_vocab(checkpoint_dir + "word.vocab")
-    tag2id, id2tag = read_tag_vocab(checkpoint_dir + "tag.vocab")
-    seg2id, id2seg = read_tag_vocab(checkpoint_dir + "seg.vocab")
+    word2id, id2word = read_vocab(config.vocab_file)
+    tag2id, id2tag = read_tag_vocab(config.tag_vocab_file)
+    seg2id, id2seg = read_tag_vocab(config.segment_vocab_file)
 
     with tf.Session(config=get_config_proto(log_device_placement=False)) as sess:
         model = NERModel(sess,config)

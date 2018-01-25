@@ -6,9 +6,9 @@ from tensorflow.contrib.tensorboard.plugins import projector
 import numpy as np
 
 UNK = '<unk>'
-UNK_ID = 0
+UNK_ID = 1
 PAD = '<pad>'
-PAD_ID = 1
+PAD_ID = 0
 
 def get_optimizer(opt):
     """
@@ -104,7 +104,7 @@ def read_vocab(vocab_file):
         print("The first vocab word %s %s"
                     " is not %s %s" %
                     (vocab[0],vocab[1], PAD, UNK))
-        vocab = [UNK,PAD] + vocab
+        vocab = [PAD, UNK] + vocab
         vocab_size += 2
     
     word2id = {}
