@@ -101,6 +101,9 @@ class NERModel(object):
 
                 self.source_inputs = tf.concat([self.source_inputs, segment_inputs], axis=-1)
 
+            if self.train_phase:
+                self.source_inputs = tf.nn.dropout(self.source_inputs, self.config.keep_prob)
+
     def setup_bilstm(self):
         with tf.variable_scope("BILSTM"):
             bi_encoder_outputs, bi_encoder_state = bidirection_rnn_cell(self.config.encode_cell_type, self.config.num_units, self.config.num_bi_layers, self.train_phase,

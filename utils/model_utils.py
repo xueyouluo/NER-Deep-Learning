@@ -77,6 +77,19 @@ def load_pretrained_emb_from_txt(id2word, embed_file):
     ))
     return embedding    
 
+def read_tag_vocab(tag_file):
+    vocab = []
+    with codecs.getreader("utf-8")(tf.gfile.GFile(tag_file, "rb")) as f:
+        vocab_size = 0
+        for word in f:
+            vocab_size += 1
+            vocab.append(word.strip())
+    word2id = {}
+    for word in vocab:
+        word2id[word] = len(word2id)
+    id2word = {i: w for w, i in word2id.items()}
+    return word2id,id2word  
+
 def read_vocab(vocab_file):
     """read vocab from file, one word per line
     """

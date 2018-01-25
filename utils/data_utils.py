@@ -171,6 +171,36 @@ def get_segment_tags(sentence):
             tags.extend(t)
     return tags
 
+def result_to_json(string, tags):
+    item = {"string": string, "entities": []}
+    entity_name = ""
+    entity_start = 0
+    idx = 0
+    for char, tag in zip(string, tags):
+        if tag[0] == "S":
+            item["entities"].append({"word": char, "start": idx, "end": idx+1, "type":tag[2:]})
+        elif tag[0] == "B":
+            entity_name += char
+            entity_start = idx
+        elif tag[0] == "I":
+            entity_name += char
+        elif tag[0] == "E":
+            entity_name += char
+            item["entities"].append({"word": entity_name, "start": entity_start, "end": idx + 1, "type": tag[2:]})
+            entity_name = ""
+        else:
+            entity_name = ""
+            entity_start = idx
+        idx += 1
+    return item
+
+def convert_sentence(sentence, word2id, segment2id):
+    sentence = sentence.replace(" ",'')
+    segment_tags = get_segment_tags(sentence)
+    words = [word2id[w] if w in word2id else word2id[UNK] for w in sentence]
+    segment_tags = [segment2id[s] for s in segment_tags]
+    return words, len(words), segment_tags
+
 def convert_dataset(sentences, word_vocab, tag_vocab, segment_vocab):
     word2id = {w:i for i,w in enumerate(word_vocab)}
     tag2id = {t:i for i,t in enumerate(tag_vocab)}

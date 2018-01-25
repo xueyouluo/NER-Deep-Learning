@@ -18,6 +18,7 @@ class Config(object):
     segement_embedding_size = 10
     segment_onehot = True
     segment_tag_num = 4
+    segment_vocab_file = None
 
     # LSTM
     encode_cell_type = 'lstm'
@@ -26,4 +27,8 @@ class Config(object):
 
     # crf
     num_tags = 5
-    
+    tag_vocab_file = None
+
+    # best f1
+    best_dev_f1 = -100
+    best_test_f1 = -100
