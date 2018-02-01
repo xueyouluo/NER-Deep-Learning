@@ -83,7 +83,7 @@ def evaluate(iterable, options=None):
             num_features = len(features)
         elif num_features != len(features) and len(features) != 0:
             raise FormatError('unexpected number of features: %d (%d)' %
-                              (len(features), num_features))
+                              (len(features), num_features), line)
 
         if len(features) == 0 or features[0] == options.boundary:
             features = [options.boundary, 'O', 'O']

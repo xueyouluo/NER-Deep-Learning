@@ -7,25 +7,30 @@ import tensorflow as tf
 from model.config import Config
 from model.model import NERModel
 from utils.data_utils import (Batch, convert_dataset, create_vocab, read_data,
-                              save_vocab, segment_vocab, update_tag_scheme)
+                              save_vocab, segment_vocab, update_tag_scheme, add_external_words)
 from utils.evaluate import evaluate
 from utils.train_utils import get_config_proto
 
 if __name__ == "__main__":
     DATA_DIR = "./data"
-    checkpoint_dir = '/tmp/ner_test/'
+    TRAIN_DATA_DIR = '/data/public/NER/ner/'
+    external_words_fname = '/data/xueyou/ner/sogou.words.txt'
+    checkpoint_dir = '/data/xueyou/ner/ner_lstm_dim256_0201/'
 
     if not os.path.exists(checkpoint_dir):
         os.mkdir(checkpoint_dir)
 
+    add_external_words(external_words_fname)
+
     # read training data
-    train_data = read_data(os.path.join(DATA_DIR,"example.train"))
+    train_files = [os.path.join(DATA_DIR,"example.train"),os.path.join(TRAIN_DATA_DIR,"people.199801.tagged.txt"),os.path.join(TRAIN_DATA_DIR,"boson_nlp.tagged.txt")]
+    train_data = read_data(train_files,lower=True)
 
     # convert tags to iobes
     update_tag_scheme(train_data)
 
     # create vocab from training data
-    word_vocab,tag_vocab = create_vocab(train_data)
+    word_vocab,tag_vocab = create_vocab(train_data, lower_case=True, min_cnt=2)
     segment_vocab = segment_vocab()
 
     # save vocab
@@ -38,16 +43,17 @@ if __name__ == "__main__":
     print("training data size: {0}".format(len(train_data)))
 
     # load test and dev data
-    test_data = read_data(os.path.join(DATA_DIR,"example.test"))
+    test_data = read_data(os.path.join(DATA_DIR,"example.test"),lower=True)
     update_tag_scheme(test_data)
     test_data = convert_dataset(test_data, word_vocab, tag_vocab, segment_vocab)
-    test_data_batch = Batch(test_data,200)
+    test_data_batch = Batch(test_data,500)
 
-    dev_data = read_data(os.path.join(DATA_DIR,"example.dev"))
+    dev_data = read_data(os.path.join(DATA_DIR,"example.dev"),lower=True)
     update_tag_scheme(dev_data)
     dev_data = convert_dataset(dev_data, word_vocab, tag_vocab, segment_vocab)
-    dev_data_batch = Batch(dev_data,200)
+    dev_data_batch = Batch(dev_data,500)
 
+    train_data_batch = Batch(train_data, 500)
     # create model
     config = Config()
 
@@ -57,7 +63,9 @@ if __name__ == "__main__":
     else:
         config.checkpoint_dir = checkpoint_dir
         config.vocab_file = os.path.join(checkpoint_dir,"word.vocab")
-        config.pretrained_embedding_file = os.path.join(DATA_DIR,"wiki_100.utf8")
+        config.encode_cell_type = 'LSTM'
+        config.external_word_file = external_words_fname
+        #config.pretrained_embedding_file = os.path.join(DATA_DIR,"wiki_100.utf8")
         config.num_tags = len(tag_vocab)
         config.segment_vocab_file = os.path.join(checkpoint_dir,"seg.vocab")
         config.tag_vocab_file = os.path.join(checkpoint_dir,"tag.vocab")
@@ -68,13 +76,20 @@ if __name__ == "__main__":
         model.build()
         model.init()
 
+        print("Config:")
+        for k,v in config.__dict__.items():
+            print(k,'-',v,sep='\t')
+
         try:
             model.restore_model()
             print("restored model from checkpoint dir")
         except:
             print("create with fresh parameters")
             pass
-        batch_manager = Batch(train_data,32)
+
+        dev_saver = tf.train.Saver(tf.global_variables())
+
+        batch_manager = Batch(train_data,config.batch_size)
         checkpoint_loss = 0.0
         step_time = 0.0
         stats_per_step = 50
@@ -83,19 +98,27 @@ if __name__ == "__main__":
         best_dev_f1 = config.best_dev_f1
         best_test_f1 = config.best_test_f1
 
-        for i in range(30):
+        should_stop = False
+        epoch = 0
+        while True:
+            epoch += 1
             for batch in batch_manager.next_batch():
                 start_time = time.time()
-                loss, global_step = model.train_one_batch(*zip(*batch))
+                loss, global_step, lr = model.train_one_batch(*zip(*batch))
                 step_time += (time.time() - start_time)
                 checkpoint_loss += loss
 
                 if global_step % stats_per_step == 0:
-                    print("# global step - {0}, step time - {1}, loss - {2}".format(global_step,step_time/stats_per_step, checkpoint_loss/stats_per_step))
+                    print("# epoch - {3}, global step - {0}, step time - {1}, loss - {2}, lr - {4}".format(
+                        global_step,step_time/stats_per_step, checkpoint_loss/stats_per_step, epoch, lr))
                     checkpoint_loss = 0.0
                     step_time = 0.0
 
-                if global_step % stats_per_eval == 0:
+                if global_step % (5*stats_per_eval) == 0:
+                    print("Eval train data")
+                    train_f1 = evaluate(model, "train", train_data_batch, word_vocab, tag_vocab)
+
+                if global_step % stats_per_eval == 0 or global_step == config.num_train_steps:
                     words, length, segments, target = batch[0]
 
                     decode,_ = model.inference([words],[length],[segments])
@@ -106,21 +129,31 @@ if __name__ == "__main__":
                     print("Predict:")
                     print(" ".join([tag_vocab[p] for p in decode[0][:length]]))
 
-                    dev_f1 = evaluate(model,"dev",dev_data,word_vocab,tag_vocab)
-                    test_f1 = evaluate(model,'test',test_data,word_vocab,tag_vocab)
+                    print("Eval dev data")
+                    dev_f1 = evaluate(model,"dev",dev_data_batch,word_vocab,tag_vocab)
+                    print("Eval test data")
+                    test_f1 = evaluate(model,'test',test_data_batch,word_vocab,tag_vocab)
 
                     if dev_f1 > best_dev_f1:
                         best_dev_f1 = dev_f1
                         config.best_dev_f1 = best_dev_f1
-                        print("New best dev f1 - {0}".format(best_dev_f1))
-                        model.save_model(config.checkpoint_dir + "/best_dev")
+                        config.best_test_f1 = test_f1
+                        print("New best dev f1 - {0}, test f1 - {1}".format(best_dev_f1, test_f1))
+                        dev_saver.save(sess,config.checkpoint_dir + "best_dev/model",global_step)
                         pickle.dump(config, open(os.path.join(config.checkpoint_dir,"config.pkl"),'wb'))
 
                     if test_f1 > best_test_f1:
                         best_test_f1 = test_f1
                         config.best_test_f1 = best_test_f1
                         print("New best test f1 - {0}".format(best_test_f1))
-                        model.save_model(config.checkpoint_dir + "/best_test")
-                        pickle.dump(config, open(os.path.join(config.checkpoint_dir,"config.pkl"),'wb'))
+
+                if global_step >= config.num_train_steps:
+                    should_stop = True
+                    break
 
             model.save_model()
+
+            if should_stop:
+                print("Best f1 of dev: {0}, test f1: {1}".format(config.best_dev_f1,config.best_test_f1))
+                print("Best test f1 is {0}".format(best_test_f1))
+                break

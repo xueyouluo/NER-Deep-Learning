@@ -4,14 +4,17 @@ import tensorflow as tf
 
 from model.config import Config
 from model.model import NERModel
-from utils.data_utils import convert_sentence, result_to_json
+from utils.data_utils import convert_sentence, result_to_json, add_external_words
 from utils.model_utils import read_tag_vocab, read_vocab
 from utils.train_utils import get_config_proto
 
 if __name__ == "__main__":
-    checkpoint_dir = "/tmp/ner/"
+    checkpoint_dir = '/data/xueyou/ner/ner_dim256/'
     config = pickle.load(open(checkpoint_dir + "config.pkl",'rb'))
     config.mode = "inference"
+    if config.external_word_file:
+        add_external_words(config.external_word_file)
+        
     word2id, id2word = read_vocab(config.vocab_file)
     tag2id, id2tag = read_tag_vocab(config.tag_vocab_file)
     seg2id, id2seg = read_tag_vocab(config.segment_vocab_file)

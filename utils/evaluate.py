@@ -19,8 +19,7 @@ def eval_ner(results, path, name):
     f1 = float(eval_lines[1].strip().split()[-1])
     return eval_lines, f1
 
-def evaluate(model, name, sentences, word_vocab, tag_vocab):
-    batch_manager = Batch(sentences)
+def evaluate(model, name, batch_manager, word_vocab, tag_vocab):
     results = []
     for batch in batch_manager.next_batch(shuffle=False):
         sources,lengths,predicts,golds = model.evaluate(*zip(*batch))

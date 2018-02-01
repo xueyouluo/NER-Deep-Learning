@@ -45,9 +45,26 @@ class NERModel(object):
     def setup_train(self):
         print("set up training")
         self.learning_rate = tf.constant(self.config.learning_rate)
+        if self.config.learning_decay:
+            if self.config.start_decay_step:
+                start_decay_step = self.config.start_decay_step
+            else:
+                start_decay_step = int(self.config.num_train_steps/2)
+            remain_steps = self.config.num_train_steps - start_decay_step
+            decay_steps = int(remain_steps / self.config.decay_times)
+            print("learning rate - {0}, start decay step - {1}, decay ratio - {2}, decay times - {3}".format(
+                self.config.learning_rate, start_decay_step, self.config.decay_factor, self.config.decay_times))
+            self.learning_rate = tf.cond(
+                self.global_step < start_decay_step,
+                lambda: self.learning_rate,
+                lambda: tf.train.exponential_decay(
+                    self.learning_rate,
+                    (self.global_step - start_decay_step),
+                    decay_steps, self.config.decay_factor, staircase=True),
+                name="learning_rate_decay_cond")
         opt = get_optimizer(self.config.optimizer)(self.learning_rate)
         params = tf.trainable_variables()
-        gradients = tf.gradients(self.losses, params, colocate_gradients_with_ops=True)
+        gradients = tf.gradients(self.losses, params)
         clipped_gradients, _ = tf.clip_by_global_norm(
             gradients, self.config.max_gradient_norm)
         self.gradient_norm = tf.global_norm(gradients)
@@ -61,6 +78,7 @@ class NERModel(object):
         tf.summary.scalar("train_loss", self.losses)
         tf.summary.scalar('gN',self.gradient_norm)
         tf.summary.scalar('pN',self.param_norm)
+        tf.summary.scalar("learning_rate", self.learning_rate)
         self.summary_op = tf.summary.merge_all()
 
     def setup_input_placeholders(self):
@@ -72,6 +90,9 @@ class NERModel(object):
         self.segment_tokens = tf.placeholder(tf.int32, shape=[None,None], name="segment_tokens")
         # batch size * sentece length
         self.target_tokens = tf.placeholder(tf.int32, shape=[None,None], name="target_tokens")
+
+        if self.train_phase:
+            self.keep_prob = tf.placeholder(tf.float32, name="Dropout")
 
         self.batch_size = tf.shape(self.source_tokens)[0]
 
@@ -102,7 +123,7 @@ class NERModel(object):
                 self.source_inputs = tf.concat([self.source_inputs, segment_inputs], axis=-1)
 
             if self.train_phase:
-                self.source_inputs = tf.nn.dropout(self.source_inputs, self.config.keep_prob)
+                self.source_inputs = tf.nn.dropout(self.source_inputs, self.keep_prob)
 
     def setup_bilstm(self):
         with tf.variable_scope("BILSTM"):
@@ -117,6 +138,8 @@ class NERModel(object):
         with tf.variable_scope("Projection"):
             hidden_layer = tf.layers.Dense(self.config.num_units,tf.tanh,kernel_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.1), name='hidden_layer')
             hidden = hidden_layer(self.encode_outputs)
+            if self.train_phase:
+                hidden = tf.nn.dropout(hidden, self.keep_prob)
             project_layer = tf.layers.Dense(self.config.num_tags,kernel_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.1), name='project_layer')
             # batch size * sentence length * num_tags
             self.pred = project_layer(hidden)
@@ -164,10 +187,11 @@ class NERModel(object):
         feed_dict[self.source_length] = source_length
         feed_dict[self.segment_tokens] = segment_tokens
         feed_dict[self.target_tokens] = target_tokens
+        feed_dict[self.keep_prob] = self.config.keep_prob
 
-        losses, summary, global_step, _ = self.sess.run([self.losses, self.summary_op, self.global_step, self.updates], feed_dict=feed_dict)
+        lr, losses, summary, global_step, _ = self.sess.run([self.learning_rate, self.losses, self.summary_op, self.global_step, self.updates], feed_dict=feed_dict)
         self.summary_writer.add_summary(summary, global_step)
-        return losses, global_step
+        return losses, global_step, lr
 
     def inference_np(self, source_tokens, source_length, segment_tokens):
         '''
@@ -177,8 +201,10 @@ class NERModel(object):
         feed_dict[self.source_tokens] = source_tokens
         feed_dict[self.source_length] = source_length
         feed_dict[self.segment_tokens] = segment_tokens
+        if self.train_phase:
+            feed_dict[self.keep_prob] = 1.0
 
-        tf_unary_scores, tf_transition_params = sess.run([self.logits, self.transition_params],feed_dict=feed_dict)
+        tf_unary_scores, tf_transition_params = self.sess.run([self.logits, self.transition_params],feed_dict=feed_dict)
         decode_sequnces, decode_score = [],[]
         for tf_unary_scores_, tf_sequence_length_  in zip(tf_unary_scores, source_length):
             # Remove padding.
@@ -196,6 +222,7 @@ class NERModel(object):
         feed_dict[self.source_length] = source_length
         feed_dict[self.segment_tokens] = segment_tokens
         feed_dict[self.target_tokens] = target_tokens
+        feed_dict[self.keep_prob] = 1.0
         tf_viterbi_sequence, tf_viterbi_score = self.sess.run([self.viterbi_sequence, self.viterbi_score], feed_dict=feed_dict)
         return source_tokens, source_length, tf_viterbi_sequence, target_tokens
 
@@ -207,6 +234,8 @@ class NERModel(object):
         feed_dict[self.source_tokens] = source_tokens
         feed_dict[self.source_length] = source_length
         feed_dict[self.segment_tokens] = segment_tokens
-
+        if self.train_phase:
+            feed_dict[self.keep_prob] = 1.0
+            
         tf_viterbi_sequence, tf_viterbi_score = self.sess.run([self.viterbi_sequence, self.viterbi_score], feed_dict=feed_dict)
         return tf_viterbi_sequence, tf_viterbi_score

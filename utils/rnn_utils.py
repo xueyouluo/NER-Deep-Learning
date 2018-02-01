@@ -62,6 +62,8 @@ def single_rnn_cell(cell_name, num_units, train_phase=True, keep_prob=0.75, devi
         cell = tf.contrib.rnn.GRUCell(num_units)
     elif cell_name == "LSTM":
         cell = tf.contrib.rnn.LSTMCell(num_units)
+    elif cell_name == "COUPLED_LSTM":
+        cell = tf.contrib.rnn.CoupledInputForgetGateLSTMCell(num_units)
     else:
         cell = tf.contrib.rnn.BasicRNNCell(num_units)
 

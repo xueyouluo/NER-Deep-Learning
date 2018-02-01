@@ -6,6 +6,19 @@ import jieba
 import random
 import math
 
+def add_external_words(fname):
+    '''
+    Add external words to jieba dict
+    each line contains one word
+    '''
+    cnt = 0
+    with open(fname,encoding='utf8') as f:
+        for line in f:
+            word = line.strip()
+            cnt += 1
+            jieba.add_word(word)
+    print("add {0} words from {1}".format(cnt,fname))
+
 def iobes_iob(tags):
     """
     IOBES -> IOB
@@ -50,39 +63,49 @@ def iob_iobes(tags):
             raise Exception('Invalid IOB format!')
     return new_tags
 
-def read_data(fname, zeros=False):
+def read_data(fnames, zeros=False, lower=False):
     '''
     Read all data into memory and convert to iobes tags.
     A line must contain at least a word and its tag.
     Sentences are separated by empty lines.
     Args:
-        - fname: filename contains the data
+        - fnames: a list of filenames contain the data
         - zeros: if we need to replace digits to 0s
     Return:
         - sentences: a list of sentnences, each sentence contains a list of (word,tag) pairs
     '''
     sentences = []
     sentence = []
-    num = 0
-    for line in codecs.open(fname, 'r', 'utf8'):
-        num+=1
-        line = line.rstrip()
-        line = re.sub("\d+",'0',line) if zeros else line
-        if not line:
-            if len(sentence) > 0:
-                sentences.append(sentence)
-                sentence = []
-        else:
-            # in case space is a word
-            if line[0] == " ":
-                line = "$" + line[1:]
-                word = line.split()
+    if not isinstance(fnames, list):
+        fnames = [fnames]
+    for fname in fnames:
+        sentence_num = 0
+        num = 0
+        print("read data from file {0}".format(fname))
+        for line in codecs.open(fname, 'r', 'utf8'):
+            num+=1
+            line = line.rstrip()
+            line = re.sub("\d+",'0',line) if zeros else line
+            if not line:
+                if len(sentence) > 0:
+                    sentences.append(sentence)
+                    sentence_num += 1
+                    sentence = []
             else:
-                word= line.split()
-            assert len(word) >= 2, print(num,[word[0]])
-            sentence.append(word)
-    if len(sentence) > 0:
-        sentences.append(sentence)
+                # in case space is a word
+                if line[0] == " ":
+                    line = "$" + line[1:]
+                    word = line.split()
+                else:
+                    word= line.split(' ')
+                assert len(word) >= 2, print(fname,num,[word[0]],line)
+                word[0] = word[0].lower() if lower else word[0]
+                sentence.append(word)
+        if len(sentence) > 0:
+            sentence_num += 1
+            sentences.append(sentence)
+        print("Got {0} sentences from file {1}".format(sentence_num,fname))
+    print("Read all the sentences from training files: {0} sentences".format(len(sentences)))
     return sentences
 
 def iob2(tags):
@@ -131,11 +154,12 @@ def update_tag_scheme(sentences, tag_scheme='iobes'):
             raise Exception('Unknown tagging scheme!')
 
 def create_vocab(sentences, lower_case=False, min_cnt = 0):
+    print("Create vocab with lower case: {0}, min count: {1}".format(lower_case,min_cnt))
     word_count = Counter()
     tag_count = Counter()
     for sentence in sentences:
-        w,t = zip(*sentence)
-        word_count.update([t.lower() if lower_case else t for t in w])
+        ws,t = zip(*sentence)
+        word_count.update([w.lower() if lower_case else w for w in ws])
         tag_count.update(t)
     word_vocab = [PAD,UNK]
     tag_vocab = []
@@ -218,10 +242,13 @@ def convert_dataset(sentences, word_vocab, tag_vocab, segment_vocab):
 
 class Batch(object):
     def __init__(self, sentences, batch_size = 20):
-        self.sentences = sentences
         self.data_size = len(sentences)
         self.batch_size = batch_size
         self.num_batch = int(math.ceil(self.data_size / self.batch_size))
+
+        # sort sentences by length
+        self.sentences = sorted(sentences,key=lambda item: item[1])
+        self.batch_data = self.patch_to_batches()
 
     def patch_to_batches(self):
         batch_data = list()
@@ -240,6 +267,6 @@ class Batch(object):
         
     def next_batch(self, shuffle = True):
         if shuffle:
-            random.shuffle(self.sentences)
-        for batch in self.patch_to_batches():
+            random.shuffle(self.batch_data)
+        for batch in self.batch_data:
             yield batch
