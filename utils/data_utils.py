@@ -159,7 +159,7 @@ def create_vocab(sentences, lower_case=False, min_cnt = 0):
     tag_count = Counter()
     for sentence in sentences:
         ws,t = zip(*sentence)
-        word_count.update([w.lower() if lower_case else w for w in ws])
+        word_count.update([w.lower() if lower_case else w for w in ws if w.strip()])
         tag_count.update(t)
     word_vocab = [PAD,UNK]
     tag_vocab = []
