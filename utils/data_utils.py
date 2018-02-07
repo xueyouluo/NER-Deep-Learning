@@ -218,8 +218,9 @@ def result_to_json(string, tags):
         idx += 1
     return item
 
-def convert_sentence(sentence, word2id, segment2id):
+def convert_sentence(sentence, word2id, segment2id, lower=False):
     sentence = sentence.replace(" ",'')
+    sentence = sentence.lower() if lower else sentence
     segment_tags = get_segment_tags(sentence)
     words = [word2id[w] if w in word2id else word2id[UNK] for w in sentence]
     segment_tags = [segment2id[s] for s in segment_tags]

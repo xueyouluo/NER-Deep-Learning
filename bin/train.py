@@ -14,13 +14,13 @@ from utils.train_utils import get_config_proto
 if __name__ == "__main__":
     DATA_DIR = "./data"
     TRAIN_DATA_DIR = '/data/public/NER/ner/'
-    external_words_fname = '/data/xueyou/ner/sogou.words.txt'
-    checkpoint_dir = '/data/xueyou/ner/ner_lstm_dim256_0201/'
+    #external_words_fname = '/data/xueyou/ner/sogou.words.txt'
+    checkpoint_dir = '/data/xueyou/ner/ner_lstm_dim256_no_external_words_0201/'
 
     if not os.path.exists(checkpoint_dir):
         os.mkdir(checkpoint_dir)
 
-    add_external_words(external_words_fname)
+    #add_external_words(external_words_fname)
 
     # read training data
     train_files = [os.path.join(DATA_DIR,"example.train"),os.path.join(TRAIN_DATA_DIR,"people.199801.tagged.txt"),os.path.join(TRAIN_DATA_DIR,"boson_nlp.tagged.txt")]
@@ -63,8 +63,8 @@ if __name__ == "__main__":
     else:
         config.checkpoint_dir = checkpoint_dir
         config.vocab_file = os.path.join(checkpoint_dir,"word.vocab")
-        config.encode_cell_type = 'LSTM'
-        config.external_word_file = external_words_fname
+        config.encode_cell_type = 'COUPLED_LSTM'
+        #config.external_word_file = external_words_fname
         #config.pretrained_embedding_file = os.path.join(DATA_DIR,"wiki_100.utf8")
         config.num_tags = len(tag_vocab)
         config.segment_vocab_file = os.path.join(checkpoint_dir,"seg.vocab")
@@ -144,7 +144,6 @@ if __name__ == "__main__":
 
                     if test_f1 > best_test_f1:
                         best_test_f1 = test_f1
-                        config.best_test_f1 = best_test_f1
                         print("New best test f1 - {0}".format(best_test_f1))
 
                 if global_step >= config.num_train_steps:
