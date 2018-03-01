@@ -13,20 +13,20 @@ from utils.train_utils import get_config_proto
 
 if __name__ == "__main__":
     DATA_DIR = "/data/xueyou/fashion/data/"
-    checkpoint_dir = '/data/xueyou/ner/category_ner_lstm_dim256_0207/'
+    checkpoint_dir = '/data/xueyou/ner/category_ner_lstm_dim128_0208/'
 
     if not os.path.exists(checkpoint_dir):
         os.mkdir(checkpoint_dir)
 
     # read training data
-    train_files = [os.path.join(DATA_DIR,"category.ner.train.txt")]
+    train_files = [os.path.join(DATA_DIR,"category.ner.ac.train.txt")]
     train_data = read_data(train_files,lower=True)
 
     # convert tags to iobes
     update_tag_scheme(train_data)
 
     # create vocab from training data
-    word_vocab,tag_vocab = create_vocab(train_data, lower_case=True)
+    word_vocab,tag_vocab = create_vocab(train_data, lower_case=True, min_cnt = 2)
     segment_vocab = segment_vocab()
 
     # save vocab
@@ -39,12 +39,12 @@ if __name__ == "__main__":
     print("training data size: {0}".format(len(train_data)))
 
     # load test and dev data
-    test_data = read_data(os.path.join(DATA_DIR,"category.ner.test.txt"),lower=True)
+    test_data = read_data(os.path.join(DATA_DIR,"category.ner.ac.test.txt"),lower=True)
     update_tag_scheme(test_data)
     test_data = convert_dataset(test_data, word_vocab, tag_vocab, segment_vocab)
     test_data_batch = Batch(test_data,500)
 
-    dev_data = read_data(os.path.join(DATA_DIR,"category.ner.dev.txt"),lower=True)
+    dev_data = read_data(os.path.join(DATA_DIR,"category.ner.ac.dev.txt"),lower=True)
     update_tag_scheme(dev_data)
     dev_data = convert_dataset(dev_data, word_vocab, tag_vocab, segment_vocab)
     dev_data_batch = Batch(dev_data,500)
@@ -58,6 +58,8 @@ if __name__ == "__main__":
         config = pickle.load(open(os.path.join(checkpoint_dir + "config.pkl"),'rb'))
     else:
         config.checkpoint_dir = checkpoint_dir
+        config.embedding_size = 128
+        config.num_train_steps = 30000
         config.vocab_file = os.path.join(checkpoint_dir,"word.vocab")
         config.num_tags = len(tag_vocab)
         config.segment_vocab_file = os.path.join(checkpoint_dir,"seg.vocab")

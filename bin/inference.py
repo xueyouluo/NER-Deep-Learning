@@ -9,7 +9,7 @@ from utils.model_utils import read_tag_vocab, read_vocab
 from utils.train_utils import get_config_proto
 
 if __name__ == "__main__":
-    checkpoint_dir = '/data/xueyou/ner/ner_lstm_dim256_no_external_words_0201/'
+    checkpoint_dir = '/data/xueyou/ner/category_ner_lstm_dim128_0208/'
     config = pickle.load(open(checkpoint_dir + "config.pkl",'rb'))
     config.mode = "inference"
     if config.external_word_file:
